@@ -1,4 +1,4 @@
-#Strategy
+# Strategy
 
 The strategy module works as a goal-directed problem solver managed by **robo_magellan_node**. A goal is pushed onto a stack and each available goal solver is given a chance to decide if it can help solve the goal. Currently only one goal solver ever picks up the goal at a time, but that is not required.
 
