@@ -8,15 +8,15 @@
 
 	<!-- START victoria_navigation parameters -->
 	<arg name="cmd_vel_topic_name" default="/cmd_vel" doc="cmd_vel topic name" />
-	<arg name="cone_area_for_bumper_hit" default="20000" doc="If equate_size_to_bumper_hit, then a cone area &gt;= this is considered a bumper_hit" />
+	<arg name="cone_area_for_bumper_hit" default="60000" doc="If equate_size_to_bumper_hit, then a cone area &gt;= this is considered a bumper_hit" />
 	<arg name="cone_detector_topic_name" default="/cone_detector" doc="cone_detector topic name" />
-	<arg name="distance_displacement_1d_topic_name" default="/distance_displacement_1d" doc = "Topic name for DistanceDisplacement1D message" />
+	<arg name="distance_displacement_1d_topic_name" default="/bumper_left" doc = "Topic name for DistanceDisplacement1D message" />
 	<arg name="do_debug_strategy" default="true" doc="Enable info traces related to strategy code" />
 	<arg name="equate_size_to_bumper_hit" default="false" doc="True =&gt; cone size &gt;= xxx is equivalent to a bumper hit" />
 	<arg name="fix_topic_name" default="/fix" doc="fix topic name" />
 	<arg name="gps_close_distance_meters" default="2.0" doc="How close to get to a point using GPS to be considered 'close enough'" />
 	<arg name="imu_topic_name" default="/imu" doc="IMU topic name" />
-	<arg name="linear_move_meters_per_sec" default="0.3" doc="Rate to move forward in meters/second" />
+	<arg name="linear_move_meters_per_sec" default="1.0" doc="Rate to move forward in meters/second" />
 	<arg name="magnetic_declination" default="13.42" doc="Magnetic declination adjustment for IMU reading" />
 	<arg name="odometry_topic_name" default="/odom" doc="odometry topic name" />
 	<arg name="solve_using_odom" default="false" doc="true =&gt; compute distance using Odometry, not GPS" />
