@@ -15,6 +15,7 @@
 
   <buildtool_depend>catkin</buildtool_depend>
   <depend>actionlib</depend>
+  <depend>actionlib_msgs</depend>
   <depend>amcl</depend>
   <depend>angles</depend>
   <depend>base_local_planner</depend>

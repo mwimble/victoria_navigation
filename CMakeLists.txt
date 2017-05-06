@@ -9,6 +9,7 @@ SET(FLAGS "-g -ggdb -g3")
 add_definitions(-std=c++11)
 
 find_package(catkin REQUIRED
+  actionlib_msgs
   actionlib
 	geometry_msgs
 	gps_common
@@ -42,8 +43,14 @@ add_service_files(
   PushGoal.srv
 )
 
+add_action_files (
+  DIRECTORY action
+  FILES KmeansForCone.action
+)
+
 generate_messages(
   DEPENDENCIES
+  actionlib_msgs
 )
 
 catkin_package(
@@ -57,13 +64,13 @@ catkin_package(
   sensor_msgs
   std_msgs
   DEPENDS yaml-cpp
-  CATKIN_DEPENDS message_runtime victoria_perception
+  CATKIN_DEPENDS message_generation message_runtime actionlib_msgs victoria_perception
 )
 
 include_directories(
+  include
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
-  include
 )
 
 add_executable(robo_magellan_node
@@ -76,10 +83,21 @@ add_executable(robo_magellan_node
 	src/strategy_fn.cpp
 )
 
+add_executable(kmeans_for_cone_action_node
+  src/kmeans_for_cone_action_node.cpp
+  src/kmeans_for_cone.cpp
+)
+
 add_dependencies (
 	robo_magellan_node
   victoria_navigation_generate_messages_cpp
 	${catkin_EXPORTED_TARGETS}
+)
+
+add_dependencies (
+  kmeans_for_cone_action_node
+  victoria_navigation_generate_messages_cpp
+  ${catkin_EXPORTED_TARGETS}
 )
 
 target_link_libraries(
@@ -87,6 +105,12 @@ target_link_libraries(
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
   yaml-cpp
+)
+
+target_link_libraries(
+  kmeans_for_cone_action_node
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
 )
 
 roslaunch_add_file_check(launch)

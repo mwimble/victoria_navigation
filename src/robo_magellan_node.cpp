@@ -26,8 +26,10 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 #include <actionlib_msgs/GoalStatus.h>
+#include <actionlib/client/simple_action_client.h>
 
 #include "victoria_navigation/discover_cone.h"
+#include "victoria_navigation/KmeansForConeAction.h"
 #include "victoria_navigation/move_from_cone.h"
 #include "victoria_navigation/move_to_cone.h"
 #include "victoria_navigation/PushGoal.h"
@@ -178,6 +180,12 @@ int main(int argc, char** argv) {
 
     // ROS node handle.
     ros::NodeHandle nh("~");
+
+    actionlib::SimpleActionClient<victoria_navigation::KmeansForConeAction> ac("behavior_compute_kmeans_for_cone", true);
+    ROS_INFO("[robo_magellan_node] Waiting for KmeansForCone action server to start.");
+    ac.waitForServer(); //will wait for infinite time
+    ROS_INFO("[robo_magellan_node] KmeansForCone action server has started");
+
     push_goal_service = nh.advertiseService("push_goal", &pushGoalCb);
     ros::Publisher strategyStatusPublisher = nh.advertise<actionlib_msgs::GoalStatus>("/strategy", 1);
 

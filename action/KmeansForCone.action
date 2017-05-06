@@ -1,0 +1,11 @@
+# KmeansForCone action
+string cone_detector_topic_name
+string image_topic_name
+string compute_kmeans_action_name
+----
+# Result
+bool success
+string cone_detector_params
+----
+# Feedback
+string feedback
