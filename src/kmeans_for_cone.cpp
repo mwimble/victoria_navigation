@@ -45,7 +45,6 @@ KmeansForCone::KmeansForCone() :
 							boost::bind(&KmeansForCone::actionGoalCb, this, _1),
 							false)
 {
-		ROS_INFO("[KmeansForCone] constructor");//#####
 		kmeans_for_cone_server_.start();
 }
 
@@ -257,7 +256,7 @@ bool KmeansForCone::parseClusterStatistics(const std::string&  cluster_statistic
 	ClusterStatistics cluster_statistics;
 	std::vector<std::string> fields;
 
-	boost::split(fields, cluster_statistics_string, boost::is_any_of(";"));
+	boost::split(fields, cluster_statistics_string, boost::is_any_of(","));
 	if (fields.size() != 8) {
 		ROS_ERROR("Unexpected cluster response, expected 8 fields but found %d", (int) fields.size());
 		return false;
