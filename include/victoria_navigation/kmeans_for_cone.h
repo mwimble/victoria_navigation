@@ -28,6 +28,7 @@
 #include <ros/ros.h>
 #include <actionlib/server/simple_action_server.h>
 #include <boost/bind.hpp>
+#include "json.hpp"
 #include <nav_msgs/Odometry.h>
 #include <string>
 
@@ -115,7 +116,7 @@ private:
 	ClusterStatistics findNewConeDetectorParameters(const std::string& kmeans_result); 
 
 	ros::ServiceClient computeKmeansService_;	// For recalculating kmeans.
-	bool parseClusterStatistics(const std::string& cluster_statistics_string, ClusterStatistics& result);
+	bool parseClusterStatistics(const nlohmann::json& cluster_statistics_json, ClusterStatistics& result);
 	bool isLikelyConeCluster(ClusterStatistics& cluster);
 	ClusterStatistics computeLikelyConeParameters(const std::vector<ClusterStatistics>& clusters);
 
