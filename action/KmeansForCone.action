@@ -1,11 +1,14 @@
 # KmeansForCone action
-string cone_detector_topic_name
 string image_topic_name
-string compute_kmeans_action_name
 ----
 # Result
-bool success
-string cone_detector_params
+bool cone_found
+uint8 alow_hue
+uint8 ahigh_hue
+uint8 alow_saturation
+uint8 ahigh_saturation
+uint8 alow_value
+uint8 ahigh_value
 ----
 # Feedback
 string feedback

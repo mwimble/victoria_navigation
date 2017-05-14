@@ -45,7 +45,7 @@ add_service_files(
 
 add_action_files (
   DIRECTORY action
-  FILES KmeansForCone.action
+  FILES DiscoverCone.action KmeansForCone.action
 )
 
 generate_messages(
@@ -75,7 +75,7 @@ include_directories(
 
 add_executable(robo_magellan_node
 	src/robo_magellan_node.cpp
-	src/discover_cone.cpp
+	src/discover_cone.cpp ##########
   src/move_from_cone.cpp
 	src/move_to_cone.cpp
 	src/seek_to_gps.cpp
@@ -83,19 +83,8 @@ add_executable(robo_magellan_node
 	src/strategy_fn.cpp
 )
 
-add_executable(kmeans_for_cone_action_node
-  src/kmeans_for_cone_action_node.cpp
-  src/kmeans_for_cone.cpp
-)
-
 add_dependencies (
-	robo_magellan_node
-  victoria_navigation_generate_messages_cpp
-	${catkin_EXPORTED_TARGETS}
-)
-
-add_dependencies (
-  kmeans_for_cone_action_node
+  robo_magellan_node
   victoria_navigation_generate_messages_cpp
   ${catkin_EXPORTED_TARGETS}
 )
@@ -105,6 +94,34 @@ target_link_libraries(
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
   yaml-cpp
+)
+
+add_executable(discover_cone_action_node
+  src/discover_cone_action_node.cpp
+  src/discover_cone_action.cpp
+)
+
+add_dependencies (
+  discover_cone_action_node
+  victoria_navigation_generate_messages_cpp
+  ${catkin_EXPORTED_TARGETS}
+)
+
+target_link_libraries(
+  discover_cone_action_node
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
+)
+
+add_executable(kmeans_for_cone_action_node
+  src/kmeans_for_cone_action_node.cpp
+  src/kmeans_for_cone.cpp
+)
+
+add_dependencies (
+  kmeans_for_cone_action_node
+  victoria_navigation_generate_messages_cpp
+  ${catkin_EXPORTED_TARGETS}
 )
 
 target_link_libraries(

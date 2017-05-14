@@ -48,20 +48,18 @@ KmeansForCone::KmeansForCone() :
 		kmeans_for_cone_server_.start();
 }
 
-bool KmeansForCone::actionGoalCb(const victoria_navigation::KmeansForConeGoalConstPtr &goal) {
+void KmeansForCone::actionGoalCb(const victoria_navigation::KmeansForConeGoalConstPtr &goal) {
 	victoria_navigation::KmeansForConeResult result;
 	victoria_navigation::KmeansForConeFeedback feedback;
-	cone_detector_topic_name_ = goal->cone_detector_topic_name;
+	cone_detector_topic_name_ = "/cone_detector";
 	image_topic_name_ = goal->image_topic_name;
-	cone_detected_sticky_ = false;
 	count_object_detector_msgs_received_ = 0;
 	cone_detector_sub_ = nh_.subscribe(cone_detector_topic_name_, 1, &KmeansForCone::coneDetectorCb, this);
 
-	result.success = false;
-	result.cone_detector_params = "";
+	result.cone_found = false;
 
-    actionlib::SimpleActionClient<victoria_perception::KmeansAction> ac(goal->compute_kmeans_action_name, true);
-    feedback.feedback = "{\"progress\":\"Waiting on behavior_compute_kmeans_for_cone server\"}";
+    actionlib::SimpleActionClient<victoria_perception::KmeansAction> ac("/compute_kmeans", true);
+    feedback.feedback = "{\"progress\":\"Waiting on /compute_kmeans server\"}";
     kmeans_for_cone_server_.publishFeedback(feedback);
     ac.waitForServer(); //will wait for infinite time
 
@@ -79,51 +77,126 @@ bool KmeansForCone::actionGoalCb(const victoria_navigation::KmeansForConeGoalCon
     bool finished_before_timeout = ac.waitForResult(ros::Duration(8.0));
 
     if (finished_before_timeout) {
-    	ROS_INFO("[KmeansForCone::actionGoalCb] state: %s", ac.getState().toString().c_str());
-    	ROS_INFO("[KmeansForCone::actionGoalCb] result msg: %s", ac.getResult()->result_msg.c_str());
-    	ROS_INFO("[KmeansForCone::actionGoalCb] kmeans result: %s", ac.getResult()->kmeans_result.c_str());
-    }
-
-    if (!finished_before_timeout) {
-    	ROS_INFO("[KmeansForCone::actionGoalCb] aborted");
-    	kmeans_for_cone_server_.setAborted();
-    	return false;
+    	// Do nothing here, pick up below.
     } else if (kmeans_for_cone_server_.isPreemptRequested()) {
-    	ROS_INFO("[KmeansForCone::actionGoalCb] preempted");
+    	ROS_INFO("[KmeansForCone::actionGoalCb] Action was canceled");
     	kmeans_for_cone_server_.setPreempted();
-    	return false;
+    	result.cone_found = false;
+		ac.cancelGoal();
+		return;
+    } else {
+    	ROS_INFO("[KmeansForCone::actionGoalCb] TIMEOUT");
+		result.cone_found = false;
+		kmeans_for_cone_server_.setSucceeded(result);
+    	return;
     }
 
-	result.cone_detector_params = "Some Params here";//#####
+    // Pick out any k-means clusters that might be a cone and merge them together.
+	ClusterStatistics new_parameters = findNewConeDetectorParameters(ac.getResult()->kmeans_result);
+	if (!new_parameters.valid_statistics) {
+		ROS_INFO("[KmeansForCone::actionGoalCb] No good candidate for cone detector found");
+		feedback.feedback = "{\"progress\":\"No good candidate for cone detector found\"}";
+	    kmeans_for_cone_server_.publishFeedback(feedback);
+		result.cone_found = false;
+		kmeans_for_cone_server_.setSucceeded(result);
+    	return;
+	}
+
+	// Set new parameters for the cone-detector and see if a cone is seen.
+	result.alow_hue = new_parameters.min_hue;
+	result.ahigh_hue = new_parameters.max_hue;
+	result.alow_saturation = new_parameters.min_saturation;
+	result.ahigh_saturation = new_parameters.max_saturation;
+	result.alow_value = new_parameters.min_value;
+	result.ahigh_value = new_parameters.max_value;
 	ROS_INFO("[KmeansForCone::actionGoalCb] kmeans action succeeded, trying new cone_detector");
     feedback.feedback = "{\"progress\":\"Recieved result from compute kmeans action server, trying new cone_detector\"}";
     kmeans_for_cone_server_.publishFeedback(feedback);
 
     // Inject the new cone_detector parameters.
-    setNewConeDetectorParams(ac.getResult()->kmeans_result);
+    setNewConeDetectorParams(new_parameters);
 
     // See if the cone is detected.
+    unsigned int start_cone_detected_count = 0;
+
+	start_cone_detected_count = cone_detected_count_;
     recovery_start_sequence_number_ = count_object_detector_msgs_received_;
     while ((recovery_start_sequence_number_ + 12) > count_object_detector_msgs_received_) {
-    	if (cone_detected_sticky_) {
+    	// The detector is considered to be working if it often detects a cone in a short period.
+    	if (cone_detected_count_ > (start_cone_detected_count + 3)) {
 			// Cone detector adjustments worked. Success.
-			ROS_INFO("[KmeansForCone::actionGoalCb] found cone, SUCCESS");
-	    	result.success = true;
+			ROS_INFO("[KmeansForCone::actionGoalCb] FOUND CONE");
+	    	result.cone_found = true;
 	    	kmeans_for_cone_server_.setSucceeded(result);
-	    	return true;
+	    	return;
+	    }
+    }
+
+    // The cone-detector failed with the k-means parameters, so try again with  a first bit of
+    // adjustment derived from experience.
+    new_parameters.max_value += 50;
+    new_parameters.max_saturation += 50;
+    setSafeConeDetectorParameters(new_parameters);
+	result.alow_hue = new_parameters.min_hue;
+	result.ahigh_hue = new_parameters.max_hue;
+	result.alow_saturation = new_parameters.min_saturation;
+	result.ahigh_saturation = new_parameters.max_saturation;
+	result.alow_value = new_parameters.min_value;
+	result.ahigh_value = new_parameters.max_value;
+
+	ROS_INFO("[KmeansForCone::actionGoalCb] kmeans values were not good enough, trying cone_detector with first kind of adjustments");
+    feedback.feedback = "{\"progress\":\"Trying first set of adjusted parameters for cone_detector\"}";
+    kmeans_for_cone_server_.publishFeedback(feedback);
+    setNewConeDetectorParams(new_parameters);
+	start_cone_detected_count = cone_detected_count_;
+    recovery_start_sequence_number_ = count_object_detector_msgs_received_;
+    while ((recovery_start_sequence_number_ + 12) > count_object_detector_msgs_received_) {
+    	// The detector is considered to be working if it often detects a cone in a short period.
+    	if (cone_detected_count_ > (start_cone_detected_count + 3)) {
+			// Cone detector adjustments worked. Success.
+			ROS_INFO("[KmeansForCone::actionGoalCb] FOUND CONE");
+	    	result.cone_found = true;
+	    	kmeans_for_cone_server_.setSucceeded(result);
+	    	return;
+	    }
+    }
+
+    // Detector failed, try a second bit of adjustment derived from experience.
+    new_parameters.min_value -= 30;
+    new_parameters.min_saturation -= 50;
+    setSafeConeDetectorParameters(new_parameters);
+	result.alow_hue = new_parameters.min_hue;
+	result.ahigh_hue = new_parameters.max_hue;
+	result.alow_saturation = new_parameters.min_saturation;
+	result.ahigh_saturation = new_parameters.max_saturation;
+	result.alow_value = new_parameters.min_value;
+	result.ahigh_value = new_parameters.max_value;
+	ROS_INFO("[KmeansForCone::actionGoalCb] kmeans values were not good enough, trying cone_detector with second kind of adjustments");
+    feedback.feedback = "{\"progress\":\"Trying second set of adjusted parameters for cone_detector\"}";
+    kmeans_for_cone_server_.publishFeedback(feedback);
+    setNewConeDetectorParams(new_parameters);
+	start_cone_detected_count = cone_detected_count_;
+    recovery_start_sequence_number_ = count_object_detector_msgs_received_;
+    while ((recovery_start_sequence_number_ + 12) > count_object_detector_msgs_received_) {
+    	// The detector is considered to be working if it often detects a cone in a short period.
+    	if (cone_detected_count_ > (start_cone_detected_count + 3)) {
+			// Cone detector adjustments worked. Success.
+			ROS_INFO("[KmeansForCone::actionGoalCb] FOUND CONE");
+	    	result.cone_found = true;
+	    	kmeans_for_cone_server_.setSucceeded(result);
+	    	return;
 	    }
     }
 
     // New cone_detector failed.
-	ROS_INFO("[KmeansForCone::actionGoalCb] Failed to find cone, FAILURE");
-	result.success = false;
-	kmeans_for_cone_server_.setAborted();
-	return false;
+	ROS_INFO("[KmeansForCone::actionGoalCb] FAILED to find cone");
+	result.cone_found = false;
+	kmeans_for_cone_server_.setSucceeded(result);
+	return;
 }
 
-void KmeansForCone::setNewConeDetectorParams(const std::string& kmeans_result) {
-	ClusterStatistics new_parameters = findNewConeDetectorParameters(kmeans_result);
-	if (new_parameters.max_hue == 149) {
+void KmeansForCone::setNewConeDetectorParams(const ClusterStatistics& new_parameters) {
+	if (!new_parameters.valid_statistics) {
 		// Unsuccessful.
 		ROS_INFO("[KmeansForCone::setNewConeDetectorParams] failed");
 	} else {
@@ -148,15 +221,12 @@ void KmeansForCone::setNewConeDetectorParams(const std::string& kmeans_result) {
 
 KmeansForCone::ClusterStatistics KmeansForCone::findNewConeDetectorParameters(const std::string& kmeans_result) {
 	nlohmann::json json_result = nlohmann::json::parse(kmeans_result);
-	ROS_INFO("[KmeansForCone::findNewConeDetectorParameters] json_result is_array: %s", (json_result.is_array() ? "TRUE" : "FALSE"));
-
 	std::vector<std::string> clusters;
 	std::vector<ClusterStatistics> cluster_list;
 	for (nlohmann::json::iterator cluster_ptr = json_result.begin(); cluster_ptr != json_result.end(); ++cluster_ptr) {
-		const std::string tmp = cluster_ptr->dump();
-		ROS_INFO("[KmeansForCone::findNewConeDetectorParameters] cluster string: %s", tmp.c_str());
 		ClusterStatistics cluster_statistics;
 		if (!parseClusterStatistics(*cluster_ptr, cluster_statistics)) {
+			const std::string tmp = cluster_ptr->dump();
 			ROS_ERROR("Unable to parse kmeans result for cluster istring: %s", tmp.c_str());
 			return ClusterStatistics();
 		} else {
@@ -166,19 +236,12 @@ KmeansForCone::ClusterStatistics KmeansForCone::findNewConeDetectorParameters(co
 
 	ClusterStatistics new_parameters = computeLikelyConeParameters(cluster_list);
 
-	if (new_parameters.min_hue == 179) {
-		// ### Test for now good kmeans results.
+	if (!new_parameters.valid_statistics) {
+		// Failed to find a good set.
 		return new_parameters;
 	}
 
-	// Fiddle with results.
-	// new_parameters.min_hue -= 2;
-	// new_parameters.max_hue += 2;
-	// new_parameters.min_saturation -= 4;
-	// new_parameters.max_saturation += 30;
-	// new_parameters.min_value -= 10;
-	// new_parameters.max_value = 255;
-	// setSafeConeDetectorParameters(new_parameters);
+	setSafeConeDetectorParameters(new_parameters);
 	ROS_INFO("[KmeansForCone::findNewConeDetectorParameters] new parameters:, min_hue: %d, max_hue: %d, min_saturation: %d, max_saturation: %d, min_value: %d, max_value: %d, pixel_count: %d",
 			 new_parameters.min_hue, 
 			 new_parameters.max_hue, 
@@ -191,13 +254,13 @@ KmeansForCone::ClusterStatistics KmeansForCone::findNewConeDetectorParameters(co
 }
 
 void KmeansForCone::feedbackCb(const victoria_perception::KmeansFeedbackConstPtr& feedback) {
-    ROS_INFO("[KmeansForCone::feedbackCb] Feedback from compute kmeans action: %s", feedback->step.c_str());
+    //ROS_INFO("[KmeansForCone::feedbackCb] Feedback from compute kmeans action: %s", feedback->step.c_str());
 }
 
 // Capture the latest ConeDetector information
 void KmeansForCone::coneDetectorCb(const victoria_perception::ObjectDetectorConstPtr& msg) {
 	last_object_detector_msg_ = *msg;
-	cone_detected_sticky_ |= last_object_detector_msg_.object_detected;
+	if (last_object_detector_msg_.object_detected) cone_detected_count_++;
 	count_object_detector_msgs_received_++;
 }
 
@@ -212,7 +275,7 @@ KmeansForCone::ClusterStatistics KmeansForCone::getCurrentAFilter() {
     return result;
 }
 
-void KmeansForCone::setCurrentAFilter(KmeansForCone::ClusterStatistics& values) {
+void KmeansForCone::setCurrentAFilter(const KmeansForCone::ClusterStatistics& values) {
     dynamic_reconfigure::ReconfigureRequest srv_req;
     dynamic_reconfigure::ReconfigureResponse srv_resp;
 	dynamic_reconfigure::IntParameter int_param;
@@ -261,22 +324,22 @@ bool KmeansForCone::parseClusterStatistics(const nlohmann::json& cluster_statist
 	cluster_statistics.min_value = cluster_statistics_json["min_value"];
 	cluster_statistics.max_value = cluster_statistics_json["max_value"];
 	cluster_statistics.pixels = cluster_statistics_json["pixels"];
-	ROS_INFO("cluster: %d, min_hue: %d, max_hue: %d, min_saturation: %d, max_saturation: %d, min_value: %d, max_value: %d, pixel_count: %d",
-			 cluster_statistics.cluster_number, 
-			 cluster_statistics.min_hue, 
-			 cluster_statistics.max_hue, 
-			 cluster_statistics.min_saturation, 
-			 cluster_statistics.max_saturation, 
-			 cluster_statistics.min_value, 
-			 cluster_statistics.max_value, 
-			 cluster_statistics.pixels);
+	// ROS_INFO("cluster: %d, min_hue: %d, max_hue: %d, min_saturation: %d, max_saturation: %d, min_value: %d, max_value: %d, pixel_count: %d",
+	// 		 cluster_statistics.cluster_number, 
+	// 		 cluster_statistics.min_hue, 
+	// 		 cluster_statistics.max_hue, 
+	// 		 cluster_statistics.min_saturation, 
+	// 		 cluster_statistics.max_saturation, 
+	// 		 cluster_statistics.min_value, 
+	// 		 cluster_statistics.max_value, 
+	// 		 cluster_statistics.pixels);
 
 	result = cluster_statistics;
 	return true;
 }
 
 bool KmeansForCone::isLikelyConeCluster(KmeansForCone::ClusterStatistics& cluster) {
-	return (cluster.min_hue <= 7) &&
+	return (cluster.min_hue <= 10) &&
 		   (cluster.max_hue >= 5) &&
 		   (cluster.max_hue <= 40) &&
 		   (cluster.pixels >= 200);
@@ -291,6 +354,7 @@ KmeansForCone::ClusterStatistics KmeansForCone::computeLikelyConeParameters(cons
 	merged_statistics.min_value = 255;
 	merged_statistics.max_value = 0;
 	merged_statistics.pixels = 0;
+	merged_statistics.valid_statistics = false;
 	for (ClusterStatistics cluster : clusters) {
 		if (isLikelyConeCluster(cluster)) {
 			ROS_INFO("[KmeansForCone::computeLikelyConeParameters] selecting cluster: %d", cluster.cluster_number);
@@ -301,6 +365,7 @@ KmeansForCone::ClusterStatistics KmeansForCone::computeLikelyConeParameters(cons
 			merged_statistics.min_value		 = std::min(merged_statistics.min_value, cluster.min_value);
 			merged_statistics.max_value		 = std::max(merged_statistics.max_value, cluster.max_value);
 			merged_statistics.pixels		+= cluster.pixels;
+			merged_statistics.valid_statistics = true;
 		}
 	}
 

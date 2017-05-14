@@ -36,14 +36,12 @@
 #include "victoria_perception/KmeansAction.h"
 #include "victoria_perception/ObjectDetector.h"
 
-// A behavior that attempts to discover a RoboMagellan cone in the camera.
+// An action that attempts to discover a RoboMagellan cone in the camera.
 //
-// The behavior depends on a few other components and parameters..
-//		* "cone_detector_topic_name" is a topic listened to for an indication if a RoboMagellan cone is detected.
-//		* "cmd_vel_topic_name" defines a topic to be used for moving the robot. Messages will be published
-//		  to that topic. The robot will end up in a stopped state at the end of this behavior.
-//		* "odometry_topic_name" defines a topic the MIGHT be listened to in order to determine the current
-//		  heading. See the discussion of "imu_topic_name" above.
+// The action works as follows.
+// * Wait for the "compute_kmeans" action server to come online.
+// * Invoke the "compute_kmeans" action to get a breakdown of blobs of pixels in the video stream.
+// * 
 //
 // The behavior works as follows:
 //	* Wait until messages are received from the cone detector and Odometry.
@@ -69,6 +67,7 @@ private:
 			int min_value;
 			int max_value;
 			int pixels;
+			bool valid_statistics;
 			ClusterStatistics() :
 				cluster_number(-1),
 				min_hue(-1),
@@ -77,7 +76,8 @@ private:
 				max_saturation(-1),
 				min_value(-1),
 				max_value(-1),
-				pixels(-1) {}
+				pixels(-1),
+				valid_statistics(false) {}
 	} ClusterStatistics;
 
 	typedef actionlib::SimpleActionServer<victoria_navigation::KmeansForConeAction> KmeansForConeActionServer;
@@ -94,7 +94,7 @@ private:
 	ros::Subscriber	cone_detector_sub_;
 
 	// Algorithm variables.
-	bool cone_detected_sticky_;					// Sticky bit for cone detector object_detected.
+	unsigned int cone_detected_count_;			// Count of cone detection events
 	int recovery_retry_count_;					// Recovery attempts performed.
 	long int recovery_start_sequence_number_;	// Snapshot of count_object_detector_msgs_received_ for recovery.
 
@@ -102,15 +102,13 @@ private:
 	 * current video stream and update the cone detector accordingly, if a
 	 * possible cone was found in the video stream.
 	 * \param goal The goal request.
-	 * Return true iff the cone detector, after adjustment, succeedd in
-	 * finding the cone.
 	 */
-	bool actionGoalCb(const victoria_navigation::KmeansForConeGoalConstPtr &goal);
+	void actionGoalCb(const victoria_navigation::KmeansForConeGoalConstPtr &goal);
 
 	/*! \brief attempt to adjust the cone detector parameters to find a cone in the image.
-	 * \param kmeans_result Set of cluster results from kmeans filter.
+	 * \param new_parameters Set of cluster results from kmeans filter.
 	 */
-	void setNewConeDetectorParams(const std::string& kmeans_result);
+	void setNewConeDetectorParams(const ClusterStatistics& new_parameters);
 
 	/*! \brief Computer a set of likely-good cone detector parameters for the current video stream. */
 	ClusterStatistics findNewConeDetectorParameters(const std::string& kmeans_result); 
@@ -124,7 +122,7 @@ private:
 	ClusterStatistics getCurrentAFilter();
 	
 	/*! \brief Put new values for the A-filter. */
-	void setCurrentAFilter(ClusterStatistics& values);
+	void setCurrentAFilter(const ClusterStatistics& values);
 
 	// Process one ConeDetector topic message.
 	long int count_object_detector_msgs_received_;

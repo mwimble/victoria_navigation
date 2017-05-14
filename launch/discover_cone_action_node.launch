@@ -1,0 +1,19 @@
+<launch>
+	<arg name="doDebug" default="false" />
+	<arg if="$(arg doDebug)" name="launchPrefix" value="xterm -e gdb -args" />
+	<arg unless="$(arg doDebug)" name="launchPrefix" value="" />
+
+	<arg name="cmd_vel_topic_name" default="/cmd_vel" doc="cmd_vel topic name" />
+	<arg name="cone_detector_topic_name" default="/cone_detector" doc="cone_detector topic name" />
+	<arg name="image_topic_name" default="/usb_cam/image_raw" doc="topic name published by camera" />
+	<arg name="odometry_topic_name" default="/odom" doc="odometry topic name" />
+	<arg name="yaw_turn_radians_per_sec" default="0.4" doc="Rate to make yaw moves in radians per second" />
+
+	<node pkg="victoria_navigation" name="discover_cone_action_node" type="discover_cone_action_node" respawn="true" output="screen" launch-prefix="$(arg launchPrefix)" >
+		<param name="cmd_vel_topic_name" value="$(arg cmd_vel_topic_name)" />
+		<param name="cone_detector_topic_name" value="$(arg cone_detector_topic_name)" />
+		<param name="image_topic_name" value="$(arg image_topic_name)" />
+		<param name="odometry_topic_name" value="$(arg odometry_topic_name)" />
+		<param name="yaw_turn_radians_per_sec" value="$(arg yaw_turn_radians_per_sec)" />
+	</node>
+</launch>

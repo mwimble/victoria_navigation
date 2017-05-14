@@ -1,0 +1,7 @@
+# DiscoverCone action
+----
+# Result
+bool discovered_cone
+----
+# Feedback
+string feedback
